@@ -1,23 +1,70 @@
 <?php
+header("Content-Type: application/json; charset=UTF-8");
+error_reporting(0); // sembunyikan warning/notice agar tidak merusak JSON
+ini_set('display_errors', 0);
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode([
+        "success" => false,
+        "message" => "Metode tidak valid"
+    ]);
+    exit;
+}
+
 include "config.php";
 
-$email = $_POST['email'];
-$password = $_POST['password'];
+$identifier = $_POST['email'] ?? '';  // bisa email atau no_hp
+$password   = $_POST['password'] ?? '';
 
-$sql = "SELECT * FROM users WHERE email='$email' AND password='$password'";
-$result = mysqli_query($conn, $sql);
+if (empty($identifier) || empty($password)) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Data tidak lengkap"
+    ]);
+    exit;
+}
 
-if (mysqli_num_rows($result) > 0) {
-    $user = mysqli_fetch_assoc($result);
+$stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR no_hp = ? LIMIT 1");
+$stmt->bind_param("ss", $identifier, $identifier);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result && $result->num_rows > 0) {
+    $user = $result->fetch_assoc();
+
+    // ...
+if (password_verify($password, $user['password'])) {
+
+    // 💡 TAMBAHKAN LOGIKA INI SEBELUM MENGIRIM RESPON
+    $foto_url = null;
+    if (!empty($user['foto'])) {
+        // Sesuaikan base URL ini dengan alamat server Anda
+        $foto_url = "http://192.168.1.6/TEST_APPLICATION/api/" . $user['foto'];
+    }
+
     echo json_encode([
         "success" => true,
         "message" => "Login berhasil",
-        "user" => $user
+        "data" => [
+            "id"    => $user['id'],
+            "nama"  => $user['nama'],
+            "email" => $user['email'],
+            "no_hp" => $user['no_hp'],
+            "foto"  => $foto_url // <-- KIRIM URL LENGKAPNYA
+        ]
     ]);
+    } else {
+        echo json_encode([
+            "success" => false,
+            "message" => "Password salah"
+        ]);
+    }
 } else {
     echo json_encode([
         "success" => false,
-        "message" => "Email atau password salah"
+        "message" => "Email / No HP tidak ditemukan"
     ]);
 }
-?>
+
+$stmt->close();
+$conn->close();
