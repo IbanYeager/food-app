@@ -1,114 +1,194 @@
-import 'package:flutter/material.dart';
-import 'package:test_application/screens/cart_screen.dart';
-import 'package:test_application/screens/home_screen.dart';
-import 'package:test_application/screens/profile_screen.dart';
-import 'package:test_application/services/cart_service.dart';
+  // ===== lib/nav_shell.dart (MODIFIKASI) =====
 
-class NavigationShell extends StatefulWidget {
-  const NavigationShell({super.key});
+  import 'package:flutter/material.dart';
+  import 'package:provider/provider.dart';
+  import 'package:test_application/providers/cart_provider.dart';
+  import 'package:test_application/screens/cart_screen.dart';
+  import 'package:test_application/screens/home_screen.dart';
+  import 'package:test_application/screens/profile_screen.dart';
+  import 'package:test_application/screens/order_history_screen.dart';
+  // 💡 1. HAPUS FAVORITE
+  // import 'package:test_application/screens/favorite_screen.dart'; 
+  // 💡 2. IMPORT CHAT LIST
+  import 'package:test_application/screens/chat_list_screen.dart'; 
 
-  @override
-  State<NavigationShell> createState() => _NavigationShellState();
-}
+  class NavigationShell extends StatefulWidget {
+    const NavigationShell({super.key});
 
-class _NavigationShellState extends State<NavigationShell> {
-  int _selectedIndex = 0;
-
-  // Daftar halaman yang akan ditampilkan
-  static const List<Widget> _pages = <Widget>[
-    HomeScreen(),
-    CartPage(),
-    ProfileScreen(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-  
-  // Panggil fungsi ini untuk merefresh UI saat ada perubahan di cart
-  void _onCartUpdated() {
-    setState(() {});
+    @override
+    State<NavigationShell> createState() => _NavigationShellState();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Dengarkan perubahan pada cart untuk update badge notifikasi
-    CartService().addListener(_onCartUpdated);
-  }
+  class _NavigationShellState extends State<NavigationShell> {
+    int _selectedIndex = 2; // Tetap mulai di Home
 
-  @override
-  void dispose() {
-    // Hapus listener untuk mencegah memory leak
-    CartService().removeListener(_onCartUpdated);
-    super.dispose();
-  }
+    static const Color primaryColor = Color(0xFFF4511E);
+    static const double _fabSize = 64.0;
+    static const double _navBarHeight = 60.0;
+    
+    // 💡 3. GANTI HALAMAN FAVORITE DENGAN CHAT
+    final List<Widget> _pages = const [
+      ChatListScreen(), // <--- Ganti di sini
+      CartPage(),
+      HomeScreen(),
+      OrderHistoryScreen(),
+      ProfileScreen(),
+    ];
 
+    void _onItemTapped(int index) {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // Tampilkan halaman yang sesuai dengan index yang dipilih
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
-
-      // Bottom Navigation Bar yang sudah dipisahkan
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Colors.orange,
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: "Home",
+    Widget _buildIconItem(IconData icon, int index, {double size = 28.0}) {
+      // ... (Fungsi ini tidak berubah)
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _onItemTapped(index),
+          child: Container(
+            color: Colors.transparent,
+            child: Icon(icon, color: Colors.white, size: size),
           ),
-          BottomNavigationBarItem(
-            icon: Stack(
+        ),
+      );
+    }
+
+    Widget _buildCartItem(int index, CartProvider cartProvider) {
+      // ... (Fungsi ini tidak berubah)
+      final int cartCount = cartProvider.itemCount; 
+
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _onItemTapped(index),
+          child: Container(
+            color: Colors.transparent,
+            child: Stack(
+              alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
-                const Icon(Icons.shopping_cart_rounded, size: 28),
-                // Cek isi cart dari CartService
-                if (CartService().cartItems.isNotEmpty)
+                const Icon(Icons.shopping_cart, color: Colors.white, size: 28),
+                if (cartCount > 0)
                   Positioned(
-                    right: -6,
-                    top: -4,
+                    top: -5,
+                    right: 15,
                     child: Container(
-                      padding: const EdgeInsets.all(2),
+                      padding: const EdgeInsets.all(3),
                       decoration: const BoxDecoration(
-                        color: Colors.red,
+                        color: Color.fromARGB(255, 255, 255, 255),
                         shape: BoxShape.circle,
                       ),
-                      constraints: const BoxConstraints(
-                        minWidth: 18,
-                        minHeight: 18,
-                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                       child: Text(
-                        '${CartService().cartItems.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        '$cartCount',
+                        style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   ),
               ],
             ),
-            label: "Keranjang",
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            label: "Profil",
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
+    
+    @override
+    Widget build(BuildContext context) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      const double horizontalPadding = 24.0;
+      final double navBarWidth = screenWidth - (horizontalPadding * 2);
+      final double itemWidth = navBarWidth / 5;
+      final double fabLeftPosition = (_selectedIndex * itemWidth) + (itemWidth / 2) - (_fabSize / 2);
+
+      return Consumer<CartProvider>(
+        builder: (context, cartProvider, child) {
+          
+          // 💡 4. GANTI IKON FAVORITE DENGAN IKON CHAT
+          final List<Widget> allItems = [
+            _buildIconItem(Icons.chat_bubble_outline, 0), // <--- Ganti di sini
+            _buildCartItem(1, cartProvider),
+            _buildIconItem(Icons.home, 2),
+            _buildIconItem(Icons.history, 3),
+            _buildIconItem(Icons.person, 4),
+          ];
+
+          final List<Widget> leftItems = allItems.sublist(0, _selectedIndex);
+          final List<Widget> rightItems = allItems.sublist(_selectedIndex + 1);
+
+          // ... (Sisa kode Scaffold Anda tidak perlu diubah)
+          return Scaffold(
+            body: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+              child: _pages[_selectedIndex],
+            ),
+            bottomNavigationBar: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.0),
+              child: SizedBox(
+                height: _navBarHeight,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    Row(
+                      children: [
+                        if (leftItems.isNotEmpty)
+                          Expanded(
+                            flex: leftItems.length,
+                            child: Container(
+                              height: _navBarHeight,
+                              decoration: BoxDecoration(
+                                color: primaryColor,
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              child: Row(children: leftItems),
+                            ),
+                          ),
+                        
+                        const SizedBox(width: _fabSize + 16),
+                        
+                        if (rightItems.isNotEmpty)
+                          Expanded(
+                            flex: rightItems.length,
+                            child: Container(
+                              height: _navBarHeight,
+                              decoration: BoxDecoration(
+                                color: primaryColor,
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              child: Row(children: rightItems),
+                            ),
+                          ),
+                      ],
+                    ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
+                      top: -24,
+                      left: fabLeftPosition,
+                      child: GestureDetector(
+                        onTap: () => _onItemTapped(_selectedIndex),
+                        child: Container(
+                          width: _fabSize,
+                          height: _fabSize,
+                          decoration: const BoxDecoration(
+                            color: primaryColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+                            ],
+                          ),
+                          child: allItems[_selectedIndex],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
   }
-}

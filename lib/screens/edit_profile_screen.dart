@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
+import 'package:path/path.dart' as p;
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  // 💡 Terima Role dari halaman sebelumnya
+  final String role; 
+  const EditProfileScreen({super.key, this.role = 'customer'});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -14,12 +19,14 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  
   final TextEditingController namaController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController noHpController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController(); // 💡 Controller Password
 
   File? _image;
-  String? _imageUrl; // 👈 Variabel untuk menyimpan URL foto yang sudah ada
+  String? _imageUrl;
   bool _loading = false;
 
   @override
@@ -28,56 +35,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _loadDataUser();
   }
 
-  /// Memuat data user dari SharedPreferences
   Future<void> _loadDataUser() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       namaController.text = prefs.getString("nama") ?? "";
       emailController.text = prefs.getString("email") ?? "";
       noHpController.text = prefs.getString("no_hp") ?? "";
-      // 👈 Memuat URL foto yang tersimpan
       _imageUrl = prefs.getString("foto");
     });
   }
 
-  /// Menampilkan bottom sheet untuk pilih sumber foto
   Future<void> _pickImage() async {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text("Galeri"),
-                onTap: () async {
-                  final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                  if (picked != null) {
-                    setState(() => _image = File(picked.path));
-                  }
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text("Kamera"),
-                onTap: () async {
-                  final picked = await ImagePicker().pickImage(source: ImageSource.camera);
-                  if (picked != null) {
-                    setState(() => _image = File(picked.path));
-                  }
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    
+    if (picked != null) {
+      // 1. Ambil file asli
+      File originalFile = File(picked.path);
+      
+      // 2. Siapkan path untuk file hasil convert (JPG)
+      final dir = await path_provider.getTemporaryDirectory();
+      final targetPath = p.join(dir.absolute.path, "temp_${DateTime.now().millisecondsSinceEpoch}.jpg");
+
+      // 3. Kompres & Convert ke JPG
+      var result = await FlutterImageCompress.compressAndGetFile(
+        originalFile.absolute.path, 
+        targetPath,
+        quality: 70, // Kualitas 70% (Cukup bagus tapi size kecil)
+        format: CompressFormat.jpeg, // Paksa jadi JPEG
+      );
+
+      // 4. Simpan file hasil convert ke state
+      if (result != null) {
+        setState(() {
+          _image = File(result.path); // File ini sekarang formatnya .jpg
+        });
+      }
+    }
   }
 
-  /// Mengirim data ke server untuk menyimpan profil
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -89,14 +84,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       var request = http.MultipartRequest(
         "POST",
-        // ⚠️ Pastikan IP Address ini benar dan bisa diakses dari HP Anda
-        Uri.parse("http://192.168.1.6/TEST_APPLICATION/api/update_user.php"),
+        // 💡 GANTI KE API BARU
+        Uri.parse("http://192.168.1.6/test_application/api/update_profile_unified.php"),
       );
 
       request.fields['id'] = userId.toString();
+      request.fields['role'] = widget.role; // 💡 Kirim Role
       request.fields['nama'] = namaController.text;
       request.fields['email'] = emailController.text;
       request.fields['no_hp'] = noHpController.text;
+      
+      // 💡 Kirim password hanya jika diisi
+      if (passwordController.text.isNotEmpty) {
+        request.fields['password'] = passwordController.text;
+      }
 
       if (_image != null) {
         request.files.add(await http.MultipartFile.fromPath('foto', _image!.path));
@@ -104,107 +105,108 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       var response = await request.send();
       var responseBody = await response.stream.bytesToString();
-      print("Update Response: $responseBody");
-
+      
       if (response.statusCode == 200) {
         final data = jsonDecode(responseBody);
-
         if (data["status"] == "success") {
           final user = data["data"];
 
-          // simpan data terbaru ke lokal
+          // Simpan data baru ke SharedPreferences
           await prefs.setString("nama", user["nama"]);
-          await prefs.setString("email", user["email"]);
+          await prefs.setString("email", user["email"] ?? "");
           await prefs.setString("no_hp", user["no_hp"]);
-          // ❗️ Pastikan PHP mengembalikan URL lengkap
           await prefs.setString("foto", user["foto"] ?? "");
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Profil berhasil diperbarui")),
-            );
-            Navigator.pop(context, true); // kembali & kasih sinyal sukses
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil berhasil diperbarui")));
+            Navigator.pop(context, true); // Kembali dengan sukses
           }
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data["message"] ?? "Gagal update")),
-          );
+          throw Exception(data["message"]);
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Server error: ${response.statusCode}")),
-        );
+        throw Exception("Server error: ${response.statusCode}");
       }
     } catch (e) {
-      print("Error update profile: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Terjadi kesalahan: $e")),
-      );
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e")));
+    } finally {
+      if(mounted) setState(() => _loading = false);
     }
-
-    setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Edit Profil")),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: ListView(
+          child: Column(
             children: [
-              Center(
-                child: GestureDetector(
-                  onTap: _pickImage,
-                  child: CircleAvatar(
-                    radius: 60,
-                    // ⭐️ INI BAGIAN UTAMA YANG DIPERBAIKI ⭐️
-                    backgroundImage: _image != null
-                        ? FileImage(_image!) as ImageProvider // 1. Tampilkan gambar baru jika ada
-                        : _imageUrl != null && _imageUrl!.isNotEmpty
-                            ? NetworkImage(_imageUrl!) // 2. Tampilkan gambar dari server jika ada
-                            : null, // 3. Jika tidak ada, biarkan kosong agar child tampil
-                    child: Align(
+              GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 60,
+                  backgroundImage: _image != null
+                      ? FileImage(_image!) as ImageProvider
+                      : (_imageUrl != null && _imageUrl!.isNotEmpty 
+                          ? NetworkImage(_imageUrl!) 
+                          : const AssetImage('assets/images/profil.png') as ImageProvider), // Default image
+                  child: const Align(
                       alignment: Alignment.bottomRight,
-                      child: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: Colors.blue,
-                        child: Icon(Icons.edit, color: Colors.white),
-                      ),
-                    ),
-                  ),
+                      child: CircleAvatar(radius: 18, child: Icon(Icons.camera_alt, size: 18))),
                 ),
               ),
               const SizedBox(height: 20),
+              
               TextFormField(
                 controller: namaController,
-                decoration: const InputDecoration(labelText: "Nama"),
-                validator: (val) =>
-                    val == null || val.isEmpty ? "Nama tidak boleh kosong" : null,
+                decoration: const InputDecoration(labelText: "Nama Lengkap", prefixIcon: Icon(Icons.person)),
+                validator: (val) => val!.isEmpty ? "Wajib diisi" : null,
               ),
               const SizedBox(height: 10),
+              
               TextFormField(
                 controller: noHpController,
-                decoration: const InputDecoration(labelText: "No HP"),
-                validator: (val) =>
-                    val == null || val.isEmpty ? "Nomor HP wajib diisi" : null,
+                decoration: const InputDecoration(labelText: "Nomor HP", prefixIcon: Icon(Icons.phone)),
+                keyboardType: TextInputType.phone,
+                validator: (val) => val!.isEmpty ? "Wajib diisi" : null,
               ),
               const SizedBox(height: 10),
+
               TextFormField(
                 controller: emailController,
-                decoration: const InputDecoration(labelText: "Email"),
-                validator: (val) =>
-                    val == null || !val.contains("@") ? "Email tidak valid" : null,
+                decoration: const InputDecoration(labelText: "Email", prefixIcon: Icon(Icons.email)),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 20),
+
+              // 💡 FIELD PASSWORD BARU
+              const Divider(),
+              const Text("Ganti Password (Opsional)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 10),
+              
+              TextFormField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Password Baru",
+                  prefixIcon: Icon(Icons.lock),
+                  helperText: "Kosongkan jika tidak ingin mengganti password",
+                  border: OutlineInputBorder()
+                ),
               ),
               const SizedBox(height: 30),
-              _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _saveProfile,
-                      child: const Text("Simpan Perubahan"),
-                    ),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _saveProfile,
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : const Text("Simpan Perubahan"),
+                ),
+              ),
             ],
           ),
         ),

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test_application/providers/cart_provider.dart';
+import 'package:test_application/services/location_service.dart';
 import 'package:test_application/services/menu_service.dart';
 import 'package:test_application/screens/detail_screen.dart';
 import 'package:intl/intl.dart';
-
-// Import ProfileScreen tidak lagi dibutuhkan di sini
-// import 'package:test_application/screens/profile_screen.dart'; 
+import 'package:test_application/screens/store_location_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,50 +17,73 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // State untuk data pengguna dan UI
   String? namaUser;
   String? fotoUser;
-
-  // State untuk filter dan search
-  String selectedCategory = "Makanan"; // Kategori default
+  String selectedCategory = "Makanan";
   final TextEditingController searchController = TextEditingController();
   bool _isPromoFilterActive = false;
-
-  // State untuk list menu
-  List<dynamic> allMenus = [];
-  List<dynamic> filteredMenus = []; // Untuk menampung hasil search
-
-  // State untuk Pagination (Lazy Loading)
+  final List<dynamic> _allMenus = [];
+  List<dynamic> _filteredMenus = [];
+  Set<String> _favoriteMenuIds = {};
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   bool _hasMoreData = true;
   int _currentPage = 1;
-
-  // Formatter untuk mata uang Rupiah
+  bool _isInitialDataLoaded = false;
   final NumberFormat formatRupiah =
       NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  Position? _currentPosition;
+  String _currentAddress = "Memuat lokasi...";
+  final LocationService _locationService = LocationService();
 
   @override
   void initState() {
     super.initState();
-    _loadUser();
-    _loadInitialMenus(); // Memuat data menu pertama kali
+    _initializePage();
+    _setupScrollListener();
+    searchController.addListener(_applySearchFilter);
+  }
 
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels ==
-              _scrollController.position.maxScrollExtent &&
-          !_isLoading &&
-          _hasMoreData) {
-        _loadMoreMenus();
-      }
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialDataLoaded) {
+      _loadFavorites();
+      _fetchMenus(isInitial: true);
+      _isInitialDataLoaded = true;
+    }
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    searchController.removeListener(_applySearchFilter);
     searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializePage() async {
+    await _loadUser();
+    await _loadFavorites();
+    _getCurrentLocation();
+  }
+
+  Future<void> _refreshData() async {
+    _isInitialDataLoaded = false;
+    await _getCurrentLocation();
+    await _loadFavorites();
+    await _fetchMenus(isInitial: true);
+  }
+  
+  void _setupScrollListener() {
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoading &&
+          _hasMoreData) {
+        _fetchMenus();
+      }
+    });
   }
 
   Future<void> _loadUser() async {
@@ -73,44 +98,56 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadInitialMenus() async {
+  Future<void> _loadFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final favoriteIds = prefs.getStringList('favorite_menus') ?? [];
+    if (mounted) {
+      setState(() {
+        _favoriteMenuIds = favoriteIds.toSet();
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite(String menuId) async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _isLoading = true;
+      if (_favoriteMenuIds.contains(menuId)) {
+        _favoriteMenuIds.remove(menuId);
+      } else {
+        _favoriteMenuIds.add(menuId);
+      }
+    });
+    await prefs.setStringList('favorite_menus', _favoriteMenuIds.toList());
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      final locationData = await _locationService.getCurrentLocation();
+      if (mounted) {
+        setState(() {
+          _currentPosition = locationData['position'];
+          _currentAddress = locationData['address'];
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentAddress = "Gagal memuat lokasi";
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchMenus({bool isInitial = false}) async {
+    if (_isLoading || !mounted) return;
+    setState(() => _isLoading = true);
+    
+    if (isInitial) {
       _currentPage = 1;
       _hasMoreData = true;
-      allMenus.clear();
-      filteredMenus.clear();
-      searchController.clear();
-    });
-
-    try {
-      final result = await MenuService.getMenus(
-        page: _currentPage,
-        category: _isPromoFilterActive ? null : selectedCategory.toLowerCase(),
-        isPromo: _isPromoFilterActive,
-      );
-      final newMenus = result['data'] as List<dynamic>? ?? [];
-
-      setState(() {
-        allMenus.addAll(newMenus);
-        _applySearchFilter();
-
-        if (newMenus.length < 10) {
-          _hasMoreData = false;
-        }
-        _currentPage++;
-      });
-    } catch (e) {
-      // Handle error jika diperlukan
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      _allMenus.clear();
+      _filteredMenus.clear();
     }
-  }
-
-  Future<void> _loadMoreMenus() async {
-    setState(() => _isLoading = true);
 
     try {
       final result = await MenuService.getMenus(
@@ -119,33 +156,36 @@ class _HomeScreenState extends State<HomeScreen> {
         isPromo: _isPromoFilterActive,
       );
       final newMenus = result['data'] as List<dynamic>? ?? [];
+      final int totalItems = int.tryParse(result['total_items'].toString()) ?? 0;
+      
+      if (!mounted) return;
 
       setState(() {
-        if (newMenus.isNotEmpty) {
-          allMenus.addAll(newMenus);
-          _applySearchFilter();
+        _allMenus.addAll(newMenus);
+        _applySearchFilter();
+        
+        if (_allMenus.length >= totalItems) {
+          _hasMoreData = false;
+        } else {
           _currentPage++;
         }
-        if (newMenus.length < 10) {
-          _hasMoreData = false;
-        }
       });
     } catch (e) {
-      // Handle error
+      debugPrint("Error fetching menus: $e");
+      if (mounted) setState(() => _hasMoreData = false);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-
+  
   void _applySearchFilter() {
-    String query = searchController.text.toLowerCase();
+    final String query = searchController.text.toLowerCase();
+    if (!mounted) return;
     setState(() {
       if (query.isEmpty) {
-        filteredMenus = List.from(allMenus);
+        _filteredMenus = List.from(_allMenus);
       } else {
-        filteredMenus = allMenus.where((menu) {
+        _filteredMenus = _allMenus.where((menu) {
           final nama = menu['nama']?.toString().toLowerCase() ?? '';
           return nama.contains(query);
         }).toList();
@@ -155,297 +195,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // TAMBAHKAN KEMBALI: Scaffold sebagai pembungkus utama halaman ini
-    // Scaffold ini hanya akan berisi 'body'
     return Scaffold(
-      // HAPUS: SafeArea tidak lagi dibutuhkan karena Scaffold sudah menanganinya
       body: RefreshIndicator(
-        onRefresh: _loadInitialMenus,
+        onRefresh: _refreshData,
+        color: Colors.deepOrange,
         child: SingleChildScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Padding ini untuk memberi jarak dari status bar atas
               const SizedBox(height: 16),
-              // 🔹 Header atas
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        "Selamat Datang, ${namaUser ?? 'Pengguna'} 👋",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // GestureDetector dihapus karena navigasi profil via BottomNav
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundImage: (fotoUser != null && fotoUser!.isNotEmpty)
-                          ? NetworkImage(fotoUser!)
-                          : const AssetImage("assets/images/profile.png")
-                              as ImageProvider,
-                      onBackgroundImageError: (exception, stackTrace) {},
-                    ),
-                  ],
-                ),
-              ),
-
+              _buildHeader(),
               const SizedBox(height: 8),
-
-              // 🔹 Search bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: TextField(
-                  controller: searchController,
-                  onChanged: (_) => _applySearchFilter(),
-                  decoration: InputDecoration(
-                    hintText: "Cari menu...",
-                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-
+              _buildSearchBar(),
               const SizedBox(height: 16),
-
-              // 🔹 Kategori
-              SizedBox(
-                height: 90,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  children: [
-                    _buildCategory("Makanan", Icons.fastfood),
-                    _buildCategory("Minuman", Icons.local_drink),
-                    _buildCategory("Dessert", Icons.cake),
-                  ],
-                ),
-              ),
-
+              _buildCategoryList(),
               const SizedBox(height: 16),
-
-              // 🔹 Banner Promo
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      _isPromoFilterActive = !_isPromoFilterActive;
-                    });
-                    _loadInitialMenus();
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Ink(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: _isPromoFilterActive
-                          ? Colors.orange[800]
-                          : Colors.deepOrange,
-                      borderRadius: BorderRadius.circular(16),
-                      border: _isPromoFilterActive
-                          ? Border.all(color: Colors.white, width: 2)
-                          : null,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.deepOrange.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _isPromoFilterActive
-                                    ? "Promo Aktif!"
-                                    : "Promo Spesial",
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _isPromoFilterActive
-                                    ? "Ketuk untuk mematikan filter"
-                                    : "Dapatkan diskon untuk menu pilihan!",
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Image.asset(
-                          'assets/images/image-removebg-preview.png',
-                          height: 60,
-                          width: 60,
-                        )
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
+              _buildPromoBanner(),
               const SizedBox(height: 20),
-
-              // 🔹 Daftar Menu
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: (filteredMenus.isEmpty && !_isLoading)
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(40),
-                          child: Text("Tidak ada menu ditemukan"),
-                        ),
-                      )
-                    : GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredMenus.length + (_hasMoreData ? 1 : 0),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 0.8,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemBuilder: (context, index) {
-                          if (index == filteredMenus.length) {
-                            return const Center(
-                              child: CircularProgressIndicator(color: Colors.orange),
-                            );
-                          }
-
-                          final menu = filteredMenus[index];
-                          final int id =
-                              int.tryParse(menu['id'].toString()) ?? 0;
-                          final String nama =
-                              menu['nama']?.toString() ?? 'Unknown';
-                          final double harga =
-                              double.tryParse(menu['harga'].toString()) ?? 0.0;
-                          String gambar = menu['gambar']?.toString() ?? '';
-
-                          return InkWell(
-                            onTap: () {
-                              final double latitude =
-                                  double.tryParse(menu['latitude'].toString()) ??
-                                      0.0;
-                              final double longitude =
-                                  double.tryParse(menu['longitude'].toString()) ??
-                                      0.0;
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => DetailScreen(
-                                    id: id,
-                                    nama: nama,
-                                    harga: harga,
-                                    gambar: gambar,
-                                    deskripsi: menu['deskripsi'] ?? '',
-                                    latitude: latitude,
-                                    longitude: longitude,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withOpacity(0.2),
-                                    blurRadius: 5,
-                                    offset: const Offset(2, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(16),
-                                    ),
-                                    child: Image.network(
-                                      gambar,
-                                      height: 100,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                        return Container(
-                                          height: 100,
-                                          color: Colors.grey[200],
-                                          alignment: Alignment.center,
-                                          child: Icon(Icons.broken_image,
-                                              color: Colors.grey[400]),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          nama,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          formatRupiah.format(harga),
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.orange,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-
-              const SizedBox(height: 80),
+              _isLoading && _allMenus.isEmpty
+                  ? const Center(child: Padding(padding: EdgeInsets.all(60), child: CircularProgressIndicator(color: Colors.orange)))
+                  : _buildMenuGrid(),
+              const SizedBox(height: 80), 
             ],
           ),
         ),
@@ -453,18 +225,110 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🔹 Widget Kategori
-  Widget _buildCategory(String title, IconData icon) {
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Selamat Datang, ${namaUser ?? 'Pengguna'} 👋",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                
+                // 💡 MODIFIKASI BAGIAN LOKASI AGAR BISA DIKLIK
+                GestureDetector(
+                  onTap: () {
+                    // Navigasi ke Peta Toko
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const StoreLocationScreen()),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, color: Colors.deepOrange, size: 16),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          "Lihat Lokasi Toko", // Ubah teksnya
+                          style: TextStyle(
+                              color: Colors.deepOrange, // Ubah warna agar terlihat bisa diklik
+                              fontWeight: FontWeight.w600, 
+                              decoration: TextDecoration.underline // Garis bawah
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          CircleAvatar(
+            radius: 22,
+            backgroundImage: (fotoUser != null && fotoUser!.isNotEmpty)
+                ? NetworkImage(fotoUser!)
+                : const AssetImage("assets/images/profil.png") as ImageProvider,
+            onBackgroundImageError: (exception, stackTrace) {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: TextField(
+        controller: searchController,
+        decoration: InputDecoration(
+          hintText: "Cari menu...",
+          prefixIcon: const Icon(Icons.search, color: Colors.grey),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryList() {
+    return SizedBox(
+      height: 90,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          _buildCategoryItem("Makanan", Icons.fastfood),
+          _buildCategoryItem("Minuman", Icons.local_drink),
+          _buildCategoryItem("Dessert", Icons.cake),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryItem(String title, IconData icon) {
     final bool isSelected = selectedCategory == title && !_isPromoFilterActive;
     return GestureDetector(
       onTap: () {
-        if (selectedCategory == title && !_isPromoFilterActive) return;
-
+        if (isSelected) return;
         setState(() {
           _isPromoFilterActive = false;
           selectedCategory = title;
         });
-        _loadInitialMenus();
+        _fetchMenus(isInitial: true);
       },
       child: Padding(
         padding: const EdgeInsets.only(right: 12.0),
@@ -473,22 +337,209 @@ class _HomeScreenState extends State<HomeScreen> {
             CircleAvatar(
               radius: 28,
               backgroundColor: isSelected ? Colors.orange : Colors.orange[100],
-              child: Icon(
-                icon,
-                size: 28,
-                color: isSelected ? Colors.white : Colors.orange[700],
-              ),
+              child: Icon(icon, size: 28, color: isSelected ? Colors.white : Colors.orange[700]),
             ),
             const SizedBox(height: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.orange : Colors.black,
-              ),
-            )
+            Text(title, style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? Colors.orange : Colors.black,
+            )),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPromoBanner() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: InkWell(
+        onTap: () {
+          setState(() => _isPromoFilterActive = !_isPromoFilterActive);
+          _fetchMenus(isInitial: true);
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: _isPromoFilterActive ? Colors.orange[800] : Colors.deepOrange,
+            borderRadius: BorderRadius.circular(16),
+            border: _isPromoFilterActive ? Border.all(color: Colors.white, width: 2) : null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.deepOrange.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isPromoFilterActive ? "Mode Promo Aktif!" : "Promo Spesial", 
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isPromoFilterActive ? "Klik untuk melihat semua menu" : "Dapatkan diskon untuk menu pilihan!", 
+                      style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Image.asset('assets/images/image-removebg-preview.png', height: 60, width: 60),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuGrid() {
+    if (_filteredMenus.isEmpty && !_isLoading) {
+      return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text("Tidak ada menu ditemukan untuk filter ini")));
+    }
+    
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _filteredMenus.length + (_hasMoreData && _isLoading ? 1 : 0), 
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.75,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemBuilder: (context, index) {
+        if (index == _filteredMenus.length) {
+          return const Center(child: CircularProgressIndicator(color: Colors.orange));
+        }
+        final menu = _filteredMenus[index];
+        return _buildMenuItemCard(menu);
+      },
+    );
+  }
+  
+  Widget _buildMenuItemCard(Map<String, dynamic> menu) {
+    final String menuId = menu['id'].toString();
+    final bool isFavorite = _favoriteMenuIds.contains(menuId);
+
+    return GestureDetector(
+      onTap: () => _navigateToDetail(menu),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: Colors.grey.withOpacity(0.2), blurRadius: 5, offset: const Offset(2, 3)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: Image.network(
+                    menu['gambar']?.toString() ?? '',
+                    height: 120,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      height: 120,
+                      color: Colors.grey[200],
+                      alignment: Alignment.center,
+                      child: Icon(Icons.broken_image, color: Colors.grey[400]),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
+                    child: IconButton(
+                      icon: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        color: isFavorite ? Colors.redAccent : Colors.white,
+                      ),
+                      onPressed: () => _toggleFavorite(menuId),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    menu['nama']?.toString() ?? 'Unknown',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          formatRupiah.format(double.tryParse(menu['harga'].toString()) ?? 0.0),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.orange),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_shopping_cart, color: Colors.deepOrange, size: 20),
+                        onPressed: () {
+                          context.read<CartProvider>().addItem(menu);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("${menu['nama']} ditambahkan ke keranjang"),
+                              duration: const Duration(seconds: 1),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToDetail(dynamic menu) {
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Lokasi belum siap, coba lagi.")),
+      );
+      _getCurrentLocation(); 
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetailScreen(
+          id: int.tryParse(menu['id'].toString()) ?? 0,
+          nama: menu['nama']?.toString() ?? 'Unknown',
+          harga: double.tryParse(menu['harga'].toString()) ?? 0.0,
+          gambar: menu['gambar']?.toString() ?? '',
+          deskripsi: menu['deskripsi'] ?? '',
         ),
       ),
     );

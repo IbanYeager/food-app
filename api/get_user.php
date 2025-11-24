@@ -1,57 +1,47 @@
 <?php
+// ===== api/get_user.php (DENGAN LOGIKA ROLE) =====
 header('Content-Type: application/json');
-
-// Koneksi ke database
-$host = 'localhost';
-$user = 'root';
-$pass = ''; 
-$db   = 'resto_db';
-
-$koneksi = new mysqli($host, $user, $pass, $db);
-
-if ($koneksi->connect_error) {
-    echo json_encode([
-        'status' => 'error',
-        'message' => 'Koneksi gagal: ' . $koneksi->connect_error
-    ]);
-    exit;
-}
+include "config.php";
 
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$role = isset($_GET['role']) ? $_GET['role'] : 'customer'; // 💡 Ambil parameter Role
 
 if ($id <= 0) {
-    echo json_encode([
-        'status' => 'error',
-        'message' => 'Parameter ID tidak valid'
-    ]);
+    echo json_encode(['status' => 'error', 'message' => 'ID tidak valid']);
     exit;
 }
 
-// ✅ pakai prepared statement biar aman
-$stmt = $koneksi->prepare("SELECT nama, email, no_hp, foto FROM users WHERE id=?");
+// Tentukan tabel berdasarkan role
+$table = ($role === 'courier') ? 'couriers' : 'users';
+
+// Siapkan query
+$stmt = $conn->prepare("SELECT * FROM $table WHERE id = ?");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result && $result->num_rows > 0) {
-    $user = $result->fetch_assoc();
+    $data = $result->fetch_assoc();
 
-    // Tambahkan base URL ke foto
-    if (!empty($user['foto'])) {
-        $user['foto'] = "http://192.168.1.6/test_application/uploads/" . $user['foto'];
+    // Format URL Foto
+    if (!empty($data['foto'])) {
+        $data['foto'] = "http://192.168.1.6/test_application/uploads/" . $data['foto'];
     }
+
+    // Hapus password agar aman
+    unset($data['password']);
 
     echo json_encode([
         'status' => 'success',
-        'data' => $user
+        'data' => $data
     ]);
 } else {
     echo json_encode([
         'status' => 'error',
-        'message' => 'User tidak ditemukan'
+        'message' => 'User tidak ditemukan di tabel ' . $table
     ]);
 }
 
 $stmt->close();
-$koneksi->close();
+$conn->close();
 ?>

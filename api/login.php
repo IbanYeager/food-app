@@ -35,11 +35,11 @@ if ($result && $result->num_rows > 0) {
     // ...
 if (password_verify($password, $user['password'])) {
 
-    // 💡 TAMBAHKAN LOGIKA INI SEBELUM MENGIRIM RESPON
+    // 💡 PERBAIKAN: URL disamakan dengan get_user.php dan update_user.php
     $foto_url = null;
     if (!empty($user['foto'])) {
-        // Sesuaikan base URL ini dengan alamat server Anda
-        $foto_url = "http://192.168.1.6/TEST_APPLICATION/api/" . $user['foto'];
+        // Hapus '/api/' dan gunakan huruf kecil 'test_application'
+        $foto_url = "http://192.168.1.6/test_application/uploads/" . $user['foto'];
     }
 
     echo json_encode([

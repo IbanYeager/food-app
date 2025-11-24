@@ -1,10 +1,11 @@
+// ===== lib/screens/login_screen.dart (MODIFIKASI) =====
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:test_application/screens/register_screen.dart';
 import 'package:test_application/services/login_service.dart';
+// 💡 IMPORT RUMAH BARU
 import 'package:test_application/nav_shell.dart';
-// Hapus import styles.dart jika gaya terpusat di ThemeData
-// import 'package:test_application/styles.dart';
+import 'package:test_application/courier_navigation_shell.dart'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,16 +14,13 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-// ✨ BARU: Tambahkan 'SingleTickerProviderStateMixin' untuk animasi
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
+  // ... (Controller dan animasi Anda tetap SAMA) ...
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
   bool _isLoading = false;
   bool _isPasswordVisible = false;
-
-  // ✨ BARU: Controller dan animasi untuk efek fade-in
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -36,24 +34,24 @@ class _LoginScreenState extends State<LoginScreen>
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-    _animationController.forward(); // Mulai animasi
+    _animationController.forward();
   }
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    _animationController.dispose(); // Jangan lupa dispose controller animasi
+    _animationController.dispose();
     super.dispose();
   }
 
+  // 💡 --- MODIFIKASI FUNGSI LOGIN HANDLER --- 💡
   Future<void> _handleLogin() async {
-    // Sembunyikan keyboard saat tombol ditekan
     FocusScope.of(context).unfocus();
 
     if (emailController.text.isEmpty || passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email dan password tidak boleh kosong')),
+        const SnackBar(content: Text('Identifier dan password tidak boleh kosong')),
       );
       return;
     }
@@ -61,20 +59,37 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
+      // Panggil API login yang sudah dimodifikasi
       var res = await AuthService.login(
-        emailController.text,
+        emailController.text, // Ini adalah 'identifier'
         passwordController.text,
       );
 
       if (!mounted) return;
 
-
       if (res['success'] == true) {
-        // Ganti HomeScreen() dengan NavigationShell()
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const NavigationShell()), // <-- Navigasi yang Benar
-        );
+        // SUKSES LOGIN, SEKARANG CEK ROLE
+        final String role = res['role'];
+
+        if (role == 'customer') {
+          // Navigasi ke Rumah Pelanggan
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const NavigationShell()),
+          );
+        } else if (role == 'courier') {
+          // Navigasi ke Rumah Kurir
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const CourierNavigationShell()),
+          );
+        } else {
+          // Role tidak diketahui
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Role tidak dikenali: $role')),
+          );
+        }
+
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(res['message'] ?? 'Terjadi kesalahan')),
@@ -92,16 +107,16 @@ class _LoginScreenState extends State<LoginScreen>
       }
     }
   }
-
+  
+  // ... (Sisa build method Anda (_buildHeader, _buildForm, dll) tetap SAMA) ...
+  // ...
   @override
   Widget build(BuildContext context) {
-    // ✨ BARU: Mengambil tema dari context untuk konsistensi
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      // ✨ BARU: Background color dari tema
       backgroundColor: colorScheme.background,
       body: SafeArea(
         child: LayoutBuilder(
@@ -113,19 +128,17 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  // ✨ BARU: Bungkus dengan FadeTransition untuk animasi
                   child: FadeTransition(
                     opacity: _fadeAnimation,
                     child: IntrinsicHeight(
                       child: Column(
                         children: [
-                          // ✨ BARU: Kode dipecah agar lebih rapi
                           _buildHeader(textTheme, colorScheme),
                           const SizedBox(height: 40),
                           _buildForm(theme),
                           const SizedBox(height: 24),
                           _buildLoginButton(colorScheme, textTheme),
-                          const Spacer(), // ✨ PENTING: Mendorong footer ke bawah
+                          const Spacer(),
                           _buildFooter(context, textTheme, colorScheme),
                           const SizedBox(height: 20),
                         ],
@@ -141,7 +154,6 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ✨ BARU: Widget Header
   Widget _buildHeader(TextTheme textTheme, ColorScheme colorScheme) {
     return Column(
       children: [
@@ -168,22 +180,19 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ✨ BARU: Widget Form
   Widget _buildForm(ThemeData theme) {
     return Column(
       children: [
-        // Email TextField
         TextField(
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           decoration: InputDecoration(
-            labelText: 'Email',
+            labelText: 'Email atau No. HP', // 💡 Ubah label
             hintText: 'example@email.com',
             prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.primary),
           ),
         ),
         const SizedBox(height: 16),
-        // Password TextField
         TextField(
           controller: passwordController,
           obscureText: !_isPasswordVisible,
@@ -205,7 +214,6 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ✨ BARU: Widget Tombol Login
   Widget _buildLoginButton(ColorScheme colorScheme, TextTheme textTheme) {
     return SizedBox(
       width: double.infinity,
@@ -213,7 +221,6 @@ class _LoginScreenState extends State<LoginScreen>
         onPressed: _isLoading ? null : _handleLogin,
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 16),
-          // ✨ BARU: Warna dari tema
           backgroundColor: colorScheme.primary,
           foregroundColor: colorScheme.onPrimary,
           textStyle: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -232,7 +239,6 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ✨ BARU: Widget Footer (Link ke Register)
   Widget _buildFooter(BuildContext context, TextTheme textTheme, ColorScheme colorScheme) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

@@ -6,7 +6,10 @@ plugins {
 
 android {
     namespace = "com.example.test_application"
-    compileSdk = flutter.compileSdkVersion
+    
+    // 💡 PERBAIKAN 1: Gunakan tanda '=' dan angka 34
+    compileSdk = 35
+    
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -20,8 +23,11 @@ android {
 
     defaultConfig {
         applicationId = "com.example.test_application"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        
+        // 💡 PERBAIKAN 2: Gunakan tanda '=' dan minimal sdk 21
+        minSdk = 23
+        targetSdk = 35
+        
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

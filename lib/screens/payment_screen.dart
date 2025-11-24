@@ -1,10 +1,18 @@
+// ===== lib/screens/payment_page.dart (MODIFIKASI) =====
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test_application/providers/cart_provider.dart';
 import 'package:test_application/screens/succes_screen.dart';
-import 'package:intl/intl.dart'; // import intl untuk format rupiah
-import 'package:test_application/services/cart_service.dart';
+import 'package:intl/intl.dart';
+import 'package:test_application/services/order_service.dart';
+// 💡 BARU: Import
+import 'package:test_application/services/location_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 
 class PaymentPage extends StatefulWidget {
-  final double total; // ✅ ganti dari Decimal ke double
+  final double total;
   const PaymentPage({super.key, required this.total});
 
   @override
@@ -17,14 +25,25 @@ class _PaymentPageState extends State<PaymentPage> {
   final TextEditingController cardController = TextEditingController();
   final TextEditingController bankController = TextEditingController();
 
-  // Formatter rupiah tanpa desimal
   final NumberFormat formatRupiah =
       NumberFormat.currency(locale: 'id_ID', symbol: 'Rp', decimalDigits: 0);
+
+  final Map<String, String> eWalletLogos = {
+    "DANA": "assets/images/dana.png",
+    "GoPay": "assets/images/gopay.png",
+    "ShopeePay": "assets/images/shopeepay.jpeg",
+    "QRIS": "assets/images/qris.png",
+  };
+  
+  bool _isLoading = false;
+  // 💡 BARU: Buat instance service lokasi
+  final LocationService _locationService = LocationService();
 
   bool get isFormValid {
     if (selectedPayment == null) return false;
     if (selectedPayment == 'E-Wallet') return selectedEWallet != null;
-    if (selectedPayment == 'Kartu Kredit/Debit') return cardController.text.isNotEmpty;
+    if (selectedPayment == 'Kartu Kredit/Debit')
+      return cardController.text.isNotEmpty;
     if (selectedPayment == 'Transfer Bank') return bankController.text.isNotEmpty;
     return true;
   }
@@ -34,6 +53,78 @@ class _PaymentPageState extends State<PaymentPage> {
     cardController.dispose();
     bankController.dispose();
     super.dispose();
+  }
+
+  Future<void> _processOrder() async {
+    if (!isFormValid) return;
+
+    setState(() => _isLoading = true);
+
+    final cart = context.read<CartProvider>();
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt("user_id")?.toString() ?? "0"; 
+
+    if (userId == "0") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error: User ID tidak ditemukan. Harap login ulang.")),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    // 💡 BARU: Ambil lokasi user sebelum checkout
+    LatLng userLocation;
+    try {
+      final locationData = await _locationService.getCurrentLocation();
+      final Position position = locationData['position'];
+      userLocation = LatLng(position.latitude, position.longitude);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Gagal mendapatkan lokasi Anda: $e")),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    // ------------------------------------
+
+    // 💡 MODIFIKASI: Panggil OrderService dengan lokasi
+    final result = await OrderService.createOrder(
+      userId: userId,
+      total: widget.total,
+      items: cart.items,
+      userLocation: userLocation, // 💡 Masukkan lokasi
+    );
+
+    if (!mounted) return; 
+
+    if (result['success'] == true) {
+      cart.clearCart();
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const SuccessPage(),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Gagal membuat pesanan: ${result['message']}")),
+      );
+    }
+
+    setState(() => _isLoading = false);
+  }
+  
+  // ... (sisa build method _buildPaymentTitle dan build(BuildContext context) Anda TETAP SAMA)
+  // ...
+  Widget _buildPaymentTitle(String assetName, String title) {
+    return Row(
+      children: [
+        Image.asset(assetName, width: 40, height: 25, fit: BoxFit.contain),
+        const SizedBox(width: 16),
+        Text(title),
+      ],
+    );
   }
 
   @override
@@ -54,7 +145,7 @@ class _PaymentPageState extends State<PaymentPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              formatRupiah.format(widget.total), // ✅ tampilkan tanpa desimal
+              formatRupiah.format(widget.total),
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -62,7 +153,6 @@ class _PaymentPageState extends State<PaymentPage> {
               ),
             ),
             const SizedBox(height: 24),
-
             const Text(
               "Pilih metode pembayaran:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
@@ -71,9 +161,12 @@ class _PaymentPageState extends State<PaymentPage> {
             Expanded(
               child: ListView(
                 children: [
-                  // E-Wallet
                   RadioListTile<String>(
-                    title: const Text("E-Wallet"),
+                    title: const Row(children: [
+                      Icon(Icons.account_balance_wallet, color: Colors.deepPurple),
+                      SizedBox(width: 16),
+                      Text("E-Wallet")
+                    ]),
                     value: "E-Wallet",
                     groupValue: selectedPayment,
                     onChanged: (value) {
@@ -82,26 +175,26 @@ class _PaymentPageState extends State<PaymentPage> {
                         selectedEWallet = null;
                       });
                     },
-                    secondary: const Icon(Icons.account_balance_wallet),
                   ),
                   if (selectedPayment == "E-Wallet")
                     Padding(
                       padding: const EdgeInsets.only(left: 40),
                       child: Column(
-                        children: ["DANA", "GoPay", "ShopeePay", "QRIS"]
-                            .map((e) => RadioListTile<String>(
-                                  title: Text(e),
-                                  value: e,
+                        children: eWalletLogos.keys
+                            .map((eWalletName) => RadioListTile<String>(
+                                  title: _buildPaymentTitle(
+                                      eWalletLogos[eWalletName]!, eWalletName),
+                                  value: eWalletName,
                                   groupValue: selectedEWallet,
-                                  onChanged: (v) => setState(() => selectedEWallet = v),
+                                  onChanged: (v) =>
+                                      setState(() => selectedEWallet = v),
                                 ))
                             .toList(),
                       ),
                     ),
-
-                  // Kartu Kredit/Debit
                   RadioListTile<String>(
-                    title: const Text("Kartu Kredit/Debit"),
+                    title: _buildPaymentTitle(
+                        "assets/images/credit_card.png", "Kartu Kredit/Debit"),
                     value: "Kartu Kredit/Debit",
                     groupValue: selectedPayment,
                     onChanged: (value) {
@@ -110,7 +203,6 @@ class _PaymentPageState extends State<PaymentPage> {
                         cardController.clear();
                       });
                     },
-                    secondary: const Icon(Icons.credit_card),
                   ),
                   if (selectedPayment == "Kartu Kredit/Debit")
                     Padding(
@@ -125,10 +217,9 @@ class _PaymentPageState extends State<PaymentPage> {
                         onChanged: (_) => setState(() {}),
                       ),
                     ),
-
-                  // Transfer Bank
                   RadioListTile<String>(
-                    title: const Text("Transfer Bank"),
+                    title: _buildPaymentTitle(
+                        "assets/images/bank_transfer.png", "Transfer Bank"),
                     value: "Transfer Bank",
                     groupValue: selectedPayment,
                     onChanged: (value) {
@@ -137,7 +228,6 @@ class _PaymentPageState extends State<PaymentPage> {
                         bankController.clear();
                       });
                     },
-                    secondary: const Icon(Icons.money),
                   ),
                   if (selectedPayment == "Transfer Bank")
                     Padding(
@@ -159,26 +249,21 @@ class _PaymentPageState extends State<PaymentPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: isFormValid
-                    ? () {
-                        // ✅ Hapus semua item di keranjang
-                        CartService().cartItems.clear();
-
-                        // ✅ Navigasi ke halaman sukses
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SuccessPage(),
-                          ),
-                        );
-                      }
-                    : null,
+                onPressed: (isFormValid && !_isLoading) ? _processOrder : null,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle:
+                      const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text("Pesan Sekarang"),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,),
+                      )
+                    : const Text("Pesan Sekarang"),
               ),
             ),
           ],

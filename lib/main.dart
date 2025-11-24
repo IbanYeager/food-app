@@ -1,10 +1,19 @@
+// ===== lib/main.dart (MODIFIKASI) =====
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test_application/nav_shell.dart';
+import 'package:test_application/providers/cart_provider.dart';
 import 'package:test_application/screens/login_screen.dart';
-import 'package:test_application/nav_shell.dart'; // Import NavShell yang sudah dibuat
+import 'package:test_application/courier_navigation_shell.dart'; // 💡 IMPORT SHELL KURIR
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => CartProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -14,15 +23,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Test Application',
-      theme: _buildTheme(), // Memanggil fungsi tema
-      // Ganti 'home' dengan AuthWrapper untuk cek status login
-      home: const AuthWrapper(), 
+      theme: _buildTheme(),
+      home: const AuthWrapper(), // 💡 Titik awal
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// Widget baru untuk memeriksa status otentikasi/login
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -34,28 +41,33 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    // Panggil fungsi pengecekan saat widget pertama kali dibuat
     _checkLoginStatus();
   }
 
+  // 💡 --- MODIFIKASI FUNGSI CHECK STATUS --- 💡
   Future<void> _checkLoginStatus() async {
-    // Tunggu sesaat untuk UX yang lebih baik (opsional)
     await Future.delayed(const Duration(seconds: 1)); 
-
     final prefs = await SharedPreferences.getInstance();
-    // Kita cek apakah ada data 'nama' yang tersimpan
-    // Ini menandakan pengguna sudah pernah login
-    final bool isLoggedIn = prefs.getString('nama')?.isNotEmpty ?? false;
+    
+    // Cek 'role' yang disimpan
+    final String? role = prefs.getString('role');
 
-    if (!mounted) return; // Pastikan widget masih ada di tree
+    if (!mounted) return;
 
-    // Ganti halaman sesuai status login tanpa bisa kembali (back)
-    if (isLoggedIn) {
+    if (role == 'customer') {
+      // Pergi ke Rumah Pelanggan
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const NavigationShell()),
       );
+    } else if (role == 'courier') {
+      // Pergi ke Rumah Kurir
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const CourierNavigationShell()),
+      );
     } else {
+      // Tidak ada role, pergi ke Login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -65,23 +77,21 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // Tampilkan layar loading saat pengecekan berlangsung
     return const Scaffold(
       body: Center(
         child: CircularProgressIndicator(
-          color: Color(0xFFF4511E), // Warna primary
+          color: Color(0xFFF4511E),
         ),
       ),
     );
   }
 }
-
-
-// Fungsi untuk membangun tema aplikasi (Tidak ada perubahan, sudah bagus)
+// ... (Fungsi _buildTheme() Anda tetap SAMA) ...
+// ...
 ThemeData _buildTheme() {
   final baseTheme = ThemeData.light(useMaterial3: true);
 
-  const primaryColor = Color(0xFFF4511E); 
+  const primaryColor = Color(0xFFF4511E);
   const secondaryColor = Color(0xFFFFB74D);
   const backgroundColor = Color.fromARGB(255, 255, 255, 255);
   const textFieldFillColor = Color(0xFFF9F9F9);
@@ -93,7 +103,7 @@ ThemeData _buildTheme() {
       background: backgroundColor,
       onPrimary: Colors.white,
     ),
-    scaffoldBackgroundColor: backgroundColor, // Set latar belakang utama
+    scaffoldBackgroundColor: backgroundColor,
     textTheme: baseTheme.textTheme.apply(
       fontFamily: 'Poppins',
       bodyColor: Colors.grey.shade800,

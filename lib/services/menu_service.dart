@@ -1,24 +1,26 @@
+// menu_service.dart
+
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class MenuService {
-  static const String baseUrl = "http://192.168.1.6/test_application/api";
+  static final String baseUrl = kDebugMode
+      ? "http://192.168.1.6/test_application/api"
+      : "https://api.production-url-anda.com";
 
-  // Fungsi diubah untuk menerima parameter filter
   static Future<Map<String, dynamic>> getMenus({
     int page = 1,
+    int limit = 10,
     String? category,
-    bool? isPromo,
+    // Parameter ini digunakan HomeScreen untuk mengambil "Menu Rekomendasi" (sebagai pengganti filter popularitas)
+    bool? isPromo, 
   }) async {
-    const int limit = 10;
-
-    // Membuat map untuk query parameters
     final Map<String, String> queryParameters = {
       'page': page.toString(),
       'limit': limit.toString(),
     };
 
-    // Tambahkan parameter filter jika ada nilainya
     if (category != null && category.isNotEmpty) {
       queryParameters['kategori'] = category;
     }
@@ -26,19 +28,27 @@ class MenuService {
       queryParameters['promo'] = '1';
     }
 
-    // Menggunakan Uri.parse().replace() untuk membangun URL yang aman dan ter-encode
     final uri = Uri.parse("$baseUrl/menus.php").replace(queryParameters: queryParameters);
-    
-    final response = await http.get(uri);
 
-    if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        return decoded;
+    try {
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('Koneksi timeout. Periksa koneksi internet Anda.');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        return {"data": [], "total_items": 0};
+      } else {
+        throw Exception("Gagal mengambil data menu. Status: ${response.statusCode}");
       }
-      return {"data": [], "total_items": 0}; 
-    } else {
-      throw Exception("Gagal mengambil data menu");
+    } catch (e) {
+      throw Exception("Terjadi kesalahan: ${e.toString()}");
     }
   }
 }
