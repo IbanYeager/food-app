@@ -1,11 +1,10 @@
-// ===== lib/main.dart (MODIFIKASI) =====
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_application/nav_shell.dart';
 import 'package:test_application/providers/cart_provider.dart';
 import 'package:test_application/screens/login_screen.dart';
-import 'package:test_application/courier_navigation_shell.dart'; // 💡 IMPORT SHELL KURIR
+import 'package:test_application/courier_navigation_shell.dart';
 
 void main() {
   runApp(
@@ -24,7 +23,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Test Application',
       theme: _buildTheme(),
-      home: const AuthWrapper(), // 💡 Titik awal
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -44,30 +43,37 @@ class _AuthWrapperState extends State<AuthWrapper> {
     _checkLoginStatus();
   }
 
-  // 💡 --- MODIFIKASI FUNGSI CHECK STATUS --- 💡
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(seconds: 1)); 
+    // Delay sedikit untuk efek splash screen
+    await Future.delayed(const Duration(seconds: 2)); 
     final prefs = await SharedPreferences.getInstance();
     
-    // Cek 'role' yang disimpan
     final String? role = prefs.getString('role');
+    final int? userId = prefs.getInt('user_id');
 
     if (!mounted) return;
 
-    if (role == 'customer') {
-      // Pergi ke Rumah Pelanggan
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const NavigationShell()),
-      );
-    } else if (role == 'courier') {
-      // Pergi ke Rumah Kurir
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const CourierNavigationShell()),
-      );
+    // Cek validitas data login
+    if (userId != null && userId > 0 && role != null) {
+      if (role == 'customer') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NavigationShell()),
+        );
+      } else if (role == 'courier') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CourierNavigationShell()),
+        );
+      } else {
+        // Role aneh, lempar ke login
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
     } else {
-      // Tidak ada role, pergi ke Login
+      // Belum login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -77,20 +83,27 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
+      backgroundColor: Colors.white,
       body: Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFFF4511E),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Anda bisa ganti Icon ini dengan Logo Gambar Anda
+            Image.asset('assets/images/image-removebg-preview.png', width: 150, height: 150),
+            const SizedBox(height: 20),
+            const CircularProgressIndicator(
+              color: Color(0xFFF4511E),
+            ),
+          ],
         ),
       ),
     );
   }
 }
-// ... (Fungsi _buildTheme() Anda tetap SAMA) ...
-// ...
+
 ThemeData _buildTheme() {
   final baseTheme = ThemeData.light(useMaterial3: true);
-
   const primaryColor = Color(0xFFF4511E);
   const secondaryColor = Color(0xFFFFB74D);
   const backgroundColor = Color.fromARGB(255, 255, 255, 255);
@@ -112,8 +125,7 @@ ThemeData _buildTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: textFieldFillColor,
-      contentPadding:
-          const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -134,15 +146,6 @@ ThemeData _buildTheme() {
         ),
         textStyle: const TextStyle(
           fontSize: 16,
-          fontWeight: FontWeight.w600,
-          fontFamily: 'Poppins',
-        ),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        foregroundColor: primaryColor,
-        textStyle: const TextStyle(
           fontWeight: FontWeight.w600,
           fontFamily: 'Poppins',
         ),

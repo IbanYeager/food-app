@@ -6,7 +6,7 @@ import 'package:test_application/models/cart_item.dart';
 import 'package:latlong2/latlong.dart'; // 💡 1. IMPORT LatLng
 
 class OrderService {
-  static const String baseUrl = "http://192.168.1.6/test_application/api";
+  static const String baseUrl = "http://192.168.1.7/test_application/api";
 
   // Fungsi fetchOrders (ANDA SUDAH PUNYA INI)
   static Future<List<Order>> fetchOrders(String userId) async {

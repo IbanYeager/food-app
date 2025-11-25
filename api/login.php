@@ -39,7 +39,7 @@ if (password_verify($password, $user['password'])) {
     $foto_url = null;
     if (!empty($user['foto'])) {
         // Hapus '/api/' dan gunakan huruf kecil 'test_application'
-        $foto_url = "http://192.168.1.6/test_application/uploads/" . $user['foto'];
+        $foto_url = "http://192.168.1.7/test_application/uploads/" . $user['foto'];
     }
 
     echo json_encode([

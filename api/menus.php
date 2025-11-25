@@ -86,7 +86,7 @@ while ($row = mysqli_fetch_assoc($result)) {
     // Bangun URL gambar lengkap jika belum ada
     if ($row['gambar'] && !preg_match('/^http(s)?:\/\//', $row['gambar'])) {
         // Ganti IP address sesuai dengan server lokal Anda
-        $row['gambar'] = "http://192.168.1.6/test_application/assets/images/" . $row['gambar'];
+        $row['gambar'] = "http://192.168.1.7/test_application/assets/images/" . $row['gambar'];
     }
     $menus[] = $row;
 }

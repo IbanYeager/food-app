@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 
 class AuthService {
-  static const String baseUrl = "http://192.168.1.6/test_application/api";
+  static const String baseUrl = "http://192.168.1.7/test_application/api";
 
   /// Fungsi untuk sensor email
   static String maskEmail(String email) {

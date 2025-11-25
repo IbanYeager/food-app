@@ -229,23 +229,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center, // Pastikan sejajar vertikal
         children: [
+          // --- 1. LOGO APLIKASI (DITAMBAHKAN DISINI) ---
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8), // Opsional: agar sudut logo agak melengkung
+            child: Image.asset(
+              'assets/images/Red and White Simple Food Logo.png',
+              height: 50, // Sesuaikan ukuran logo
+              width: 50,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                // Tampilkan icon jika gambar gagal dimuat
+                return const Icon(Icons.fastfood, color: Colors.deepOrange, size: 40);
+              },
+            ),
+          ),
+          const SizedBox(width: 12), // Jarak antara logo dan teks
+
+          // --- 2. TEKS SELAMAT DATANG & LOKASI (EXISTING) ---
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   "Selamat Datang, ${namaUser ?? 'Pengguna'} 👋",
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Font sedikit dikecilkan agar muat
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 
-                // 💡 MODIFIKASI BAGIAN LOKASI AGAR BISA DIKLIK
+                // Widget Lokasi
                 GestureDetector(
                   onTap: () {
-                    // Navigasi ke Peta Toko
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const StoreLocationScreen()),
@@ -253,15 +269,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   child: Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, color: Colors.deepOrange, size: 16),
+                      const Icon(Icons.location_on_outlined, color: Colors.deepOrange, size: 14),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          "Lihat Lokasi Toko", // Ubah teksnya
-                          style: TextStyle(
-                              color: Colors.deepOrange, // Ubah warna agar terlihat bisa diklik
-                              fontWeight: FontWeight.w600, 
-                              decoration: TextDecoration.underline // Garis bawah
+                          "Lihat Lokasi Toko",
+                          style: const TextStyle(
+                            color: Colors.deepOrange,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            decoration: TextDecoration.underline
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -272,9 +289,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+
+          // --- 3. FOTO PROFIL USER (EXISTING) ---
           const SizedBox(width: 10),
           CircleAvatar(
-            radius: 22,
+            radius: 20, // Sedikit disesuaikan ukurannya
+            backgroundColor: Colors.grey[200],
             backgroundImage: (fotoUser != null && fotoUser!.isNotEmpty)
                 ? NetworkImage(fotoUser!)
                 : const AssetImage("assets/images/profil.png") as ImageProvider,

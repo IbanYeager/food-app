@@ -55,7 +55,7 @@ if ($q && $row = $q->fetch_assoc()) {
     if (!empty($row['foto'])) {
         // 💡 Membangun URL lengkap foto
         // Pastikan IP ini (192.168.1.6) sesuai dengan IP laptop Anda saat ini
-        $foto_url = "http://192.168.1.6/test_application/uploads/" . $row['foto'];
+        $foto_url = "http://192.168.1.7/test_application/uploads/" . $row['foto'];
     }
 }
 

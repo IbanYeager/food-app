@@ -32,7 +32,7 @@ if ($result_user && $result_user->num_rows > 0) {
     if (password_verify($password, $user['password'])) {
         $foto_url = null;
         if (!empty($user['foto'])) {
-            $foto_url = "http://192.168.1.6/test_application/uploads/" . $user['foto'];
+            $foto_url = "http://192.168.1.7/test_application/uploads/" . $user['foto'];
         }
         
         echo json_encode([
@@ -72,7 +72,7 @@ if ($result_courier && $result_courier->num_rows > 0) {
         $foto_url = null;
         if (!empty($courier['foto'])) {
             // GANTI IP SESUAI LAPTOP ANDA
-            $foto_url = "http://192.168.1.6/test_application/uploads/" . $courier['foto'];
+            $foto_url = "http://192.168.1.7/test_application/uploads/" . $courier['foto'];
         }
 
         echo json_encode([

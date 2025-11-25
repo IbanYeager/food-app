@@ -85,7 +85,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       var request = http.MultipartRequest(
         "POST",
         // 💡 GANTI KE API BARU
-        Uri.parse("http://192.168.1.6/test_application/api/update_profile_unified.php"),
+        Uri.parse("http://192.168.1.7/test_application/api/update_profile_unified.php"),
       );
 
       request.fields['id'] = userId.toString();

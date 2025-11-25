@@ -7,7 +7,7 @@ import 'package:test_application/models/chat_message_model.dart';
 class ChatService {
   
   static final String baseUrl = kDebugMode
-      ? "http://192.168.1.6/test_application/api" // Sesuaikan IP Anda
+      ? "http://192.168.1.7/test_application/api" // Sesuaikan IP Anda
       : "https_api_produksi_anda.com";
 
   // 💡 --- FUNGSI BARU --- 💡

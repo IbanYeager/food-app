@@ -157,21 +157,13 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildHeader(TextTheme textTheme, ColorScheme colorScheme) {
     return Column(
       children: [
-        const SizedBox(height: 60),
-        SvgPicture.asset(
-          'assets/images/openmoji_pot-of-food.svg',
-          width: 120,
-          height: 120,
+        const SizedBox(height: 100),
+        Image.asset(
+          'assets/images/Red and White Simple Food Logo.png',
+          width: 250,
+          height: 250,
         ),
-        const SizedBox(height: 20),
-        Text(
-          'Selamat Datang!',
-          style: textTheme.headlineLarge?.copyWith(
-            color: colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Text(
           'Masuk untuk melanjutkan',
           style: textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),

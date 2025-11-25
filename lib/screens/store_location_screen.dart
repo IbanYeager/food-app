@@ -1,4 +1,4 @@
-// ===== lib/screens/store_location_screen.dart (FITUR BARU) =====
+// ===== lib/screens/store_location_screen.dart (LOKASI BANDUNG) =====
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -17,9 +17,8 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
   final MapController _mapController = MapController();
   final LocationService _locationService = LocationService();
   
-  // 💡 GANTI INI DENGAN KOORDINAT TOKO ANDA
-  // Contoh: Monas Jakarta
-  final LatLng _storeLocation = const LatLng(-6.175392, 106.827153); 
+  // 💡 KOORDINAT BARU: Alun-Alun Bandung (Pusat Kota)
+  final LatLng _storeLocation = const LatLng(-6.9218518, 107.6048254); 
   
   LatLng? _userLocation;
   List<LatLng> _routePoints = [];
@@ -43,6 +42,9 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
         
         // Hitung Rute dari User ke Toko
         _getRoute(_userLocation!, _storeLocation);
+        
+        // Pindahkan kamera agar Toko terlihat saat pertama kali dibuka
+        _mapController.move(_storeLocation, 14.0);
       }
     } catch (e) {
       if (mounted) setState(() => _distanceInfo = "Gagal mendapatkan lokasi Anda");
@@ -53,8 +55,7 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
     try {
       final points = await RouteService.getRoute(from, to);
       
-      // Hitung jarak kasar (Euclidean) atau ambil dari API jika route service menyediakan
-      // Untuk simpelnya, kita hitung lurus dulu
+      // Hitung jarak kasar (Euclidean)
       final Distance distance = const Distance();
       final double km = distance.as(LengthUnit.Kilometer, from, to);
 
@@ -63,18 +64,45 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
           _routePoints = points;
           _distanceInfo = "Jarak: ${km.toStringAsFixed(1)} km ke Toko";
         });
-        // Zoom agar keduanya terlihat
-        // _mapController.fitCamera(CameraFit.coordinates(coordinates: [from, to])); 
+        
+        // Fit Camera agar kedua lokasi (User & Toko) masuk dalam layar
+        if (points.isNotEmpty) {
+           _fitCamera(points);
+        }
       }
     } catch (e) {
       debugPrint("Gagal load rute: $e");
     }
   }
 
+  void _fitCamera(List<LatLng> points) {
+    try {
+        double minLat = 90.0, maxLat = -90.0, minLng = 180.0, maxLng = -180.0;
+        for (var p in points) {
+          if (p.latitude < minLat) minLat = p.latitude;
+          if (p.latitude > maxLat) maxLat = p.latitude;
+          if (p.longitude < minLng) minLng = p.longitude;
+          if (p.longitude > maxLng) maxLng = p.longitude;
+        }
+        
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds(
+              LatLng(minLat, minLng),
+              LatLng(maxLat, maxLng),
+            ),
+            padding: const EdgeInsets.all(50),
+          ),
+        );
+    } catch(e) {
+        // Abaikan
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Lokasi Toko")),
+      appBar: AppBar(title: const Text("Lokasi Toko (Bandung)")),
       body: Column(
         children: [
           Expanded(
@@ -86,9 +114,9 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
               ),
               children: [
                 TileLayer(
-  urlTemplate: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  subdomains: const ['a', 'b', 'c', 'd'],
-),
+                  urlTemplate: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+                  subdomains: const ['a', 'b', 'c', 'd'],
+                ),
                 // Garis Rute
                 if (_routePoints.isNotEmpty)
                   PolylineLayer(
@@ -130,16 +158,32 @@ class _StoreLocationScreenState extends State<StoreLocationScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
-            color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+            ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Restoran Enak Sekali", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const Text("Jl. Contoh No. 123, Kota Bandung", style: TextStyle(color: Colors.grey)),
+                const Text("Restoran Enak Sekali (Cabang Bandung)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("Jl. Asia Afrika No. 99, Alun-Alun Bandung", style: TextStyle(color: Colors.grey)),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
-                  child: Text(_distanceInfo, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.directions, color: Colors.blue, size: 20),
+                      const SizedBox(width: 8),
+                      Text(_distanceInfo, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
                 )
               ],
             ),

@@ -1,28 +1,24 @@
-// ===== lib/screens/order_tracking_screen.dart (PERBAIKAN FLUTTER_MAP) =====
 import 'dart:convert';
 import 'package:flutter/material.dart';
-// 💡 1. IMPORT PETA FLUTTER_MAP
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' as latlong; // Tipe data lokasi
+import 'package:latlong2/latlong.dart' as latlong;
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
 import 'package:test_application/services/route_service.dart';
 import 'package:test_application/screens/chat_screen.dart';
-// 💡 IMPORT WIDGET BARU
 import 'package:test_application/widgets/photo_marker.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
-  // 💡 2. TIPE DATA SUDAH BENAR (latlong.LatLng)
-  final latlong.LatLng userLocation; // Lokasi user (tujuan)
-  final latlong.LatLng restaurantLocation; // Lokasi awal (asal)
+  final latlong.LatLng userLocation;       // Lokasi User
+  final latlong.LatLng restaurantLocation; // Lokasi Toko
   final String orderNumber;
-  final String? courierPhotoUrl; // 💡 TERIMA FOTO KURIR
+  final String? courierPhotoUrl; 
 
   const OrderTrackingScreen({
     super.key,
     required this.orderNumber,
     required this.userLocation,
     required this.restaurantLocation,
-    this.courierPhotoUrl, // Tambahkan ini
+    this.courierPhotoUrl, 
   });
 
   @override
@@ -31,34 +27,29 @@ class OrderTrackingScreen extends StatefulWidget {
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   PusherChannelsFlutter pusher = PusherChannelsFlutter.getInstance();
-
-  // 💡 3. GANTI TIPE DATA CONTROLLER
   final MapController _mapController = MapController();
-  latlong.LatLng? _courierLocation; // State untuk lokasi kurir!
-
+  
+  latlong.LatLng? _courierLocation; 
   List<latlong.LatLng> _routePoints = [];
-
   String statusMessage = "Menghubungkan ke server pelacakan...";
 
   @override
   void initState() {
     super.initState();
-    // Lokasi awal kurir adalah lokasi restoran
+    // Awalnya, posisi kurir diasumsikan di Toko
     _courierLocation = widget.restaurantLocation;
-
+    
     _initPusher();
-    // Muat rute awal (Resto -> User)
+    
+    // Ambil rute statis: Toko -> User
     _getRoute(widget.restaurantLocation, widget.userLocation);
   }
 
   Future<void> _initPusher() async {
     try {
       await pusher.init(
-        apiKey: '2c68d0ff3232cd32c50f', // Ganti Kunci Pusher Anda
-        cluster: 'ap1', // Ganti Cluster Anda
-        onConnectionStateChange: onConnectionStateChange,
-        onError: onError,
-        onSubscriptionSucceeded: onSubscriptionSucceeded,
+        apiKey: '2c68d0ff3232cd32c50f', // Pastikan Key Benar
+        cluster: 'ap1', 
         onEvent: onEvent,
       );
       await pusher.subscribe(channelName: 'order-tracking-${widget.orderNumber}');
@@ -68,32 +59,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
   }
 
-  // --- Callback Pusher ---
-  void onConnectionStateChange(dynamic currentState, dynamic previousState) {
-    debugPrint("Pusher: $currentState");
-    if (mounted) setState(() => statusMessage = "Status Koneksi: $currentState");
-  }
-
-  void onError(String message, int? code, dynamic e) {
-    debugPrint("Pusher Error: $message code: $code exception: $e");
-    if (mounted) setState(() => statusMessage = "Koneksi pelacakan gagal!");
-  }
-
-  void onSubscriptionSucceeded(String channelName, dynamic data) {
-    debugPrint("Berhasil subscribe ke: $channelName");
-    if (mounted) setState(() => statusMessage = "Terhubung ke channel pelacakan...");
-  }
-
   void onEvent(PusherEvent event) {
-    debugPrint("Menerima event: ${event.eventName}");
+    // 1. Update Status Teks
     if (event.eventName == 'status-update') {
       final data = json.decode(event.data);
       if (mounted) setState(() => statusMessage = data['message'] ?? "Status diperbarui");
     }
 
+    // 2. Update Lokasi Kurir Realtime
     if (event.eventName == 'location-update') {
       final data = json.decode(event.data);
-      // 💡 4. Buat LatLng latlong2
       final newLocation = latlong.LatLng(
         double.parse(data['lat'].toString()),
         double.parse(data['lng'].toString()),
@@ -102,68 +77,74 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       if (mounted) {
         setState(() {
           _courierLocation = newLocation;
-          statusMessage = "Lokasi kurir diperbarui...";
+          statusMessage = "Kurir sedang bergerak...";
         });
-
-        // 💡 5. Update rute (Kurir -> User) dan gerakkan kamera
-        _getRoute(newLocation, widget.userLocation);
-        _mapController.move(newLocation, _mapController.camera.zoom);
+        // Opsi: User tidak perlu re-route setiap detik, cukup gerakkan marker
+        // Tapi jika ingin akurat sisa jarak, bisa panggil _getRoute lagi
       }
     }
   }
-  // --- Akhir Callback ---
 
   Future<void> _getRoute(latlong.LatLng from, latlong.LatLng to) async {
     try {
-      // Tipe data sudah sama
       final points = await RouteService.getRoute(from, to);
-      if (mounted) setState(() => _routePoints = points);
+      if (mounted) {
+        setState(() {
+          _routePoints = points;
+        });
+        
+        if (points.isNotEmpty) {
+           _fitCamera(points);
+        }
+      }
     } catch (e) {
       debugPrint("Gagal ambil rute: $e");
+    }
+  }
+
+  void _fitCamera(List<latlong.LatLng> points) {
+    try {
+        if (points.isEmpty) return;
+
+        double minLat = points.first.latitude;
+        double maxLat = points.first.latitude;
+        double minLng = points.first.longitude;
+        double maxLng = points.first.longitude;
+
+        for (var p in points) {
+          if (p.latitude < minLat) minLat = p.latitude;
+          if (p.latitude > maxLat) maxLat = p.latitude;
+          if (p.longitude < minLng) minLng = p.longitude;
+          if (p.longitude > maxLng) maxLng = p.longitude;
+        }
+        
+        // Perbaikan LatLngBounds
+        final bounds = LatLngBounds(
+            latlong.LatLng(minLat, minLng),
+            latlong.LatLng(maxLat, maxLng),
+        );
+
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: bounds,
+            padding: const EdgeInsets.all(50),
+          ),
+        );
+    } catch(e) {
+        debugPrint("Error fit camera: $e");
     }
   }
 
   @override
   void dispose() {
     pusher.unsubscribe(channelName: 'order-tracking-${widget.orderNumber}');
-    // _mapController.dispose(); // MapController tidak perlu dispose
     super.dispose();
   }
-
-  // 💡 6. HELPER UNTUK MEMBUAT MARKER
-  List<Marker> _buildMarkers() {
-    final List<Marker> markers = [];
-
-    // Marker Restoran
-    markers.add(Marker(
-      point: widget.restaurantLocation,
-      width: 80, height: 80,
-      child: const Icon(Icons.store, color: Colors.orange, size: 40),
-    ));
-
-    // Marker User
-    markers.add(Marker(
-      point: widget.userLocation,
-      width: 80, height: 80,
-      child: const Icon(Icons.person_pin_circle, color: Colors.blue, size: 40),
-    ));
-
-    // Marker Kurir (💡 GUNAKAN PhotoMarker DENGAN FOTO)
-    if (_courierLocation != null) {
-      markers.add(PhotoMarker(
-        point: _courierLocation!,
-        photoUrl: widget.courierPhotoUrl, // Foto Kurir dari parameter
-        isDriver: true,
-      ));
-    }
-    return markers;
-  }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Melacak Pesanan ${widget.orderNumber}")),
+      appBar: AppBar(title: Text("Pesanan #${widget.orderNumber}")),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -183,18 +164,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       body: Column(
         children: [
           Expanded(
-            // 💡 7. GANTI WIDGET PETA DENGAN FLUTTERMAP
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: _courierLocation ?? widget.restaurantLocation,
-                initialZoom: 14.5,
+                initialCenter: widget.restaurantLocation, // Awal di Toko
+                initialZoom: 15.0,
               ),
               children: [
                 TileLayer(
-  urlTemplate: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  subdomains: const ['a', 'b', 'c', 'd'],
-),
+                  urlTemplate: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+                  subdomains: const ['a', 'b', 'c', 'd'],
+                ),
                 if (_routePoints.isNotEmpty)
                   PolylineLayer(
                     polylines: [
@@ -206,7 +186,27 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     ],
                   ),
                 MarkerLayer(
-                  markers: _buildMarkers(),
+                  markers: [
+                    // Marker Toko
+                    Marker(
+                      point: widget.restaurantLocation,
+                      width: 60, height: 60,
+                      child: const Icon(Icons.store, color: Colors.orange, size: 40),
+                    ),
+                    // Marker User (Tujuan)
+                    Marker(
+                      point: widget.userLocation,
+                      width: 60, height: 60,
+                      child: const Icon(Icons.person_pin_circle, color: Colors.red, size: 40),
+                    ),
+                    // Marker Kurir (Bergerak)
+                    if (_courierLocation != null)
+                      PhotoMarker(
+                        point: _courierLocation!,
+                        photoUrl: widget.courierPhotoUrl,
+                        isDriver: true,
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -215,7 +215,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             padding: const EdgeInsets.all(16),
             width: double.infinity,
             color: Colors.white,
-            child: Text(statusMessage, style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Status Pengantaran", style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text(statusMessage, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                )
+            ),
           )
         ],
       ),

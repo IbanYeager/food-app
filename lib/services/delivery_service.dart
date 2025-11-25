@@ -8,8 +8,8 @@ class DeliveryService {
   Timer? _locationTimer;
   bool _isDelivering = false;
 
-  // 💡 IP Address (Pastikan sesuai dengan laptop Anda)
-  static const String _baseUrl = "http://192.168.1.6/test_application/api";
+  // 💡 IP Address (Pastikan sama dengan file PHP config Anda)
+  static const String _baseUrl = "http://192.168.1.7/test_application/api";
 
   final String _statusApiUrl = "$_baseUrl/update_delivery_status.php";
   final String _locationApiUrl = "$_baseUrl/update_courier_location.php";
@@ -45,23 +45,29 @@ class DeliveryService {
 
     // Mulai timer kirim lokasi (setiap 10 detik)
     _isDelivering = true;
+    _sendCurrentLocation(orderNumber, courierId); // Kirim langsung pertama kali
+    
     _locationTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _sendCurrentLocation(orderNumber, courierId);
+      if (_isDelivering) {
+        _sendCurrentLocation(orderNumber, courierId);
+      } else {
+        timer.cancel();
+      }
     });
-
-    // Kirim lokasi pertama kali (langsung)
-    _sendCurrentLocation(orderNumber, courierId);
     
     return {'success': true, 'message': 'Pengantaran dimulai'};
   }
 
   // --- 2. Mengirim Lokasi Real-time ---
   Future<void> _sendCurrentLocation(String orderNumber, int courierId) async {
+    if (!_isDelivering) return;
+
     try {
       // Cek izin lokasi
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-          await Geolocator.requestPermission();
+          // Jangan request permission di dalam loop timer background, bisa mengganggu UI
+          debugPrint("Izin lokasi ditolak");
           return;
       }
       
@@ -96,14 +102,18 @@ class DeliveryService {
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'order_number': orderNumber,
-          'status': 'Selesai' // Ubah status jadi Selesai
+          'status': 'Selesai' 
         }),
       );
 
       debugPrint("Finish Response: ${response.body}");
 
       final data = json.decode(response.body);
-      return data['success'] == true;
+      if (data['success'] == true) {
+        stopDelivery(); // Matikan timer lokal
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint("Gagal menyelesaikan pesanan: $e");
       return false;
@@ -113,6 +123,7 @@ class DeliveryService {
   // --- 4. Hentikan Timer Lokal ---
   void stopDelivery() {
     _locationTimer?.cancel();
+    _locationTimer = null;
     _isDelivering = false;
     debugPrint("Pengantaran dihentikan (Timer mati)");
   }

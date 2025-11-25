@@ -25,7 +25,7 @@ if ($result && $result->num_rows > 0) {
 
     // Format URL Foto
     if (!empty($data['foto'])) {
-        $data['foto'] = "http://192.168.1.6/test_application/uploads/" . $data['foto'];
+        $data['foto'] = "http://192.168.1.7/test_application/uploads/" . $data['foto'];
     }
 
     // Hapus password agar aman

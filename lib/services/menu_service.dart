@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 
 class MenuService {
   static final String baseUrl = kDebugMode
-      ? "http://192.168.1.6/test_application/api"
+      ? "http://192.168.1.7/test_application/api"
       : "https://api.production-url-anda.com";
 
   static Future<Map<String, dynamic>> getMenus({

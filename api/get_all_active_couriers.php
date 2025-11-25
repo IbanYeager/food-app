@@ -16,7 +16,7 @@ while($row = $result->fetch_assoc()) {
     // 💡 WAJIB: Tambahkan URL lengkap untuk foto
     if (!empty($row['foto'])) {
         // GANTI IP INI SESUAI LAPTOP ANDA
-        $row['foto'] = "http://192.168.1.6/test_application/uploads/" . $row['foto'];
+        $row['foto'] = "http://192.168.1.7/test_application/uploads/" . $row['foto'];
     } else {
         $row['foto'] = ""; 
     }

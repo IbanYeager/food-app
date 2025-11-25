@@ -5,7 +5,7 @@ header('Content-Type: application/json');
 
 // 💡 1. Tentukan base URL untuk folder upload secara statis dan benar.
 // Ganti 192.168.1.6 sesuai dengan IP address server Anda.
-$upload_base_url = "http://192.168.1.6/test_application/uploads/";
+$upload_base_url = "http://192.168.1.7/test_application/uploads/";
 
 $response = ["status" => "error", "message" => "Metode request tidak valid."];
 

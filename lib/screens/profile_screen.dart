@@ -67,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       // 💡 TAMBAHKAN PARAMETER &role=$userRole KE URL
       final response = await http.get(
-        Uri.parse('http://192.168.1.6/test_application/api/get_user.php?id=$userId&role=$userRole'),
+        Uri.parse('http://crave-app.rf.gd/test_application/api/get_user.php?id=$userId&role=$userRole'),
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {

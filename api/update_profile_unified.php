@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Format URL Foto lengkap
         if (!empty($newData['foto'])) {
             // GANTI IP INI SESUAI LAPTOP ANDA
-            $newData['foto'] = "http://192.168.1.6/test_application/uploads/" . $newData['foto'];
+            $newData['foto'] = "http://192.168.1.7/test_application/uploads/" . $newData['foto'];
         }
 
         echo json_encode([
